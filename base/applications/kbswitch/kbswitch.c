@@ -8,6 +8,7 @@
  */
 
 #include "kbswitch.h"
+#include "richmenu.h"
 
 #define WM_NOTIFYICONMSG (WM_USER + 248)
 #define CX_ICON 16
@@ -22,6 +23,7 @@ HANDLE    hProcessHeap;
 HMODULE   g_hHookDLL = NULL;
 ULONG     ulCurrentLayoutNum = 1;
 HICON     g_hTrayIcon = NULL;
+HRICHMENU g_hRichMenu = NULL;
 
 static BOOL
 GetLayoutID(LPCTSTR szLayoutNum, LPTSTR szLCID, SIZE_T LCIDLength)
@@ -498,13 +500,24 @@ WndProc(HWND hwnd, UINT Message, WPARAM wParam, LPARAM lParam)
                 case WM_LBUTTONUP:
                 {
                     GetCursorPos(&pt);
-                    SetForegroundWindow(hwnd);
 
                     if (lParam == WM_LBUTTONUP)
                     {
                         /* Rebuild the left popup menu on every click to take care of keyboard layout changes */
                         hLeftPopupMenu = BuildLeftPopupMenu();
+#ifdef NORICHMENU
+                        SetForegroundWindow(hwnd);
                         TrackPopupMenu(hLeftPopupMenu, 0, pt.x, pt.y, 0, hwnd, NULL);
+                        PostMessage(hwnd, WM_NULL, 0, 0);
+#else
+                        if (g_hRichMenu)
+                        {
+                            RichMenu_HidePopup(g_hRichMenu);
+                            RichMenu_CloseHandle(g_hRichMenu);
+                        }
+                        g_hRichMenu = RichMenu_FromHMENU(hLeftPopupMenu, NULL);
+                        RichMenu_ShowPopup(g_hRichMenu, 0, pt.x, pt.y, hwnd, NULL);
+#endif
                         DestroyMenu(hLeftPopupMenu);
                     }
                     else
@@ -514,10 +527,21 @@ WndProc(HWND hwnd, UINT Message, WPARAM wParam, LPARAM lParam)
                             s_hMenu = LoadMenu(hInst, MAKEINTRESOURCE(IDR_POPUP));
                             s_hRightPopupMenu = GetSubMenu(s_hMenu, 0);
                         }
+#ifdef NORICHMENU
+                        SetForegroundWindow(hwnd);
                         TrackPopupMenu(s_hRightPopupMenu, 0, pt.x, pt.y, 0, hwnd, NULL);
+                        PostMessage(hwnd, WM_NULL, 0, 0);
+#else
+                        if (g_hRichMenu)
+                        {
+                            RichMenu_HidePopup(g_hRichMenu);
+                            RichMenu_CloseHandle(g_hRichMenu);
+                        }
+                        g_hRichMenu = RichMenu_FromHMENU(s_hRightPopupMenu, NULL);
+                        RichMenu_ShowPopup(g_hRichMenu, 0, pt.x, pt.y, hwnd, NULL);
+#endif
                     }
 
-                    PostMessage(hwnd, WM_NULL, 0, 0);
                     break;
                 }
             }
@@ -569,6 +593,13 @@ WndProc(HWND hwnd, UINT Message, WPARAM wParam, LPARAM lParam)
 
         case WM_DESTROY:
         {
+#ifdef NORICHMENU
+            if (g_hRichMenu)
+            {
+                RichMenu_HidePopup(g_hRichMenu);
+                RichMenu_CloseHandle(g_hRichMenu);
+            }
+#endif
             DeleteHooks();
             DestroyMenu(s_hMenu);
             DeleteTrayIcon(hwnd);
@@ -624,6 +655,7 @@ _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInst, LPTSTR lpCmdLine, INT nCmdSh
 
     hInst = hInstance;
     hProcessHeap = GetProcessHeap();
+    RichMenu_Init();
 
     ZeroMemory(&WndClass, sizeof(WndClass));
     WndClass.lpfnWndProc   = WndProc;
@@ -633,6 +665,7 @@ _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInst, LPTSTR lpCmdLine, INT nCmdSh
     if (!RegisterClass(&WndClass))
     {
         CloseHandle(hMutex);
+        RichMenu_Exit();
         return 1;
     }
 
@@ -647,5 +680,6 @@ _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInst, LPTSTR lpCmdLine, INT nCmdSh
     }
 
     CloseHandle(hMutex);
+    RichMenu_Exit();
     return 0;
 }
