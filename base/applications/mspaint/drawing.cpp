@@ -18,14 +18,14 @@ CreateGeometricPen(COLORREF rgbColor, INT thickness)
     logbrush.lbStyle = BS_SOLID;
     logbrush.lbColor = rgbColor;
     logbrush.lbHatch = 0;
-    return ExtCreatePen(PS_GEOMETRIC | PS_SOLID | PS_ENDCAP_ROUND | PS_JOIN_ROUND, thickness, &logbrush, 0, NULL);
+    return ExtCreatePen(PS_GEOMETRIC | PS_SOLID | PS_ENDCAP_ROUND | PS_JOIN_ROUND, thickness, &logbrush, 0, nullptr);
 }
 
 void
 Line(HDC hdc, LONG x1, LONG y1, LONG x2, LONG y2, COLORREF color, int thickness)
 {
     HPEN oldPen = (HPEN) SelectObject(hdc, CreatePen(PS_SOLID, thickness, color));
-    MoveToEx(hdc, x1, y1, NULL);
+    MoveToEx(hdc, x1, y1, nullptr);
     LineTo(hdc, x2, y2);
     SetPixelV(hdc, x2, y2, color);
     DeleteObject(SelectObject(hdc, oldPen));
@@ -36,7 +36,7 @@ Line(HDC hdc, LONG x1, LONG y1, LONG x2, LONG y2, HBRUSH hBrush, INT thickness)
 {
     HGDIOBJ oldPen = SelectObject(hdc, CreateGeometricPen(0, thickness));
     BeginPath(hdc);
-    MoveToEx(hdc, x1, y1, NULL);
+    MoveToEx(hdc, x1, y1, nullptr);
     LineTo(hdc, x2, y2);
     EndPath(hdc);
     SetPolyFillMode(hdc, WINDING);
@@ -309,7 +309,7 @@ Erase(HDC hdc, LONG x1, LONG y1, LONG x2, LONG y2, COLORREF color, LONG radius)
 void
 Erase(HDC hdc, LONG x1, LONG y1, LONG x2, LONG y2, HBRUSH hBrush, LONG radius)
 {
-    LONG b = max(1, max(labs(x2 - x1), labs(y2 - y1)));
+    LONG b = __max(1, __max(labs(x2 - x1), labs(y2 - y1)));
 
     for (LONG a = 0; a <= b; a++)
     {
@@ -323,7 +323,7 @@ Erase(HDC hdc, LONG x1, LONG y1, LONG x2, LONG y2, HBRUSH hBrush, LONG radius)
 void
 Replace(HDC hdc, LONG x1, LONG y1, LONG x2, LONG y2, COLORREF fg, COLORREF bg, LONG radius)
 {
-    LONG b = max(1, max(labs(x2 - x1), labs(y2 - y1)));
+    LONG b = __max(1, __max(labs(x2 - x1), labs(y2 - y1)));
 
     for (LONG a = 0; a <= b; a++)
     {
@@ -344,7 +344,7 @@ Replace(HDC hdc, LONG x1, LONG y1, LONG x2, LONG y2, COLORREF fg, COLORREF bg, L
 void
 Replace(HDC hdc, LONG x1, LONG y1, LONG x2, LONG y2, COLORREF fg, HBRUSH hBgBrush, LONG radius)
 {
-    LONG b = max(1, max(labs(x2 - x1), labs(y2 - y1)));
+    LONG b = __max(1, __max(labs(x2 - x1), labs(y2 - y1)));
 
     for (LONG a = 0; a <= b; a++)
     {
@@ -397,7 +397,7 @@ Airbrush(HDC hdc, LONG x, LONG y, HBRUSH hBrush, LONG r)
 static void
 BrushInternal(HDC hdc, LONG x1, LONG y1, LONG x2, LONG y2, LONG style, INT thickness)
 {
-    LONG a, b = max(1, max(labs(x2 - x1), labs(y2 - y1)));
+    LONG a, b = __max(1, __max(labs(x2 - x1), labs(y2 - y1)));
     switch ((BrushStyle)style)
     {
         case BrushStyleRound:
@@ -569,7 +569,7 @@ ColorKeyedMaskBlt(HDC hdcDest, int nXDest, int nYDest, int nWidth, int nHeight,
     HBITMAP hbmTempColor, hbmTempMask;
     HGDIOBJ hbmOld1, hbmOld2;
 
-    if (hbmMask == NULL)
+    if (hbmMask == nullptr)
     {
         if (keyColor == CLR_INVALID)
         {
@@ -592,7 +592,7 @@ ColorKeyedMaskBlt(HDC hdcDest, int nXDest, int nYDest, int nWidth, int nHeight,
 
     hTempDC1 = ::CreateCompatibleDC(hdcDest);
     hTempDC2 = ::CreateCompatibleDC(hdcDest);
-    hbmTempMask = ::CreateBitmap(nWidth, nHeight, 1, 1, NULL);
+    hbmTempMask = ::CreateBitmap(nWidth, nHeight, 1, 1, nullptr);
     hbmTempColor = CreateColorDIB(nWidth, nHeight, RGB(255, 255, 255));
 
     // hbmTempMask <-- hbmMask (stretched)
@@ -668,40 +668,44 @@ HBRUSH CreateDitherBrush(COLORREF color, COLORREF monoColor0, COLORREF monoColor
     if (brightness >= 255)
         brightness = 256; // White out
 
-    BITMAPINFO bmi = {};
+    struct {
+        BITMAPINFOHEADER bmiHeader;
+        RGBQUAD          bmiColors[2];
+    } bmi = {};
+
     bmi.bmiHeader.biSize     = sizeof(bmi.bmiHeader);
     bmi.bmiHeader.biWidth    = 8;
     bmi.bmiHeader.biHeight   = -8; // Top-down
     bmi.bmiHeader.biPlanes   = 1;
-    bmi.bmiHeader.biBitCount = 24;
+    bmi.bmiHeader.biBitCount = 1; // 1bpp monochrome
+    bmi.bmiHeader.biClrUsed  = 2;
 
-    const BYTE b0 = GetBValue(monoColor0), g0 = GetGValue(monoColor0), r0 = GetRValue(monoColor0);
-    const BYTE b1 = GetBValue(monoColor1), g1 = GetGValue(monoColor1), r1 = GetRValue(monoColor1);
+    bmi.bmiColors[0].rgbRed   = GetRValue(monoColor0);
+    bmi.bmiColors[0].rgbGreen = GetGValue(monoColor0);
+    bmi.bmiColors[0].rgbBlue  = GetBValue(monoColor0);
 
-    BYTE pixels[8 * 8 * 3];
+    bmi.bmiColors[1].rgbRed   = GetRValue(monoColor1);
+    bmi.bmiColors[1].rgbGreen = GetGValue(monoColor1);
+    bmi.bmiColors[1].rgbBlue  = GetBValue(monoColor1);
+
+    BYTE pixels[8 * 4] = {}; 
     for (INT y = 0; y < 8; ++y)
     {
-        INT index = y * (3 * CHAR_BIT);
+        BYTE rowByte = 0;
         for (INT x = 0; x < 8; ++x)
         {
             const INT threshold = s_bayerMatrix[y][x] * 255 / 63;
             if (brightness > threshold)
             {
-                pixels[index++] = b1; // Blue
-                pixels[index++] = g1; // Green
-                pixels[index++] = r1; // Red
-            }
-            else
-            {
-                pixels[index++] = b0; // Blue
-                pixels[index++] = g0; // Green
-                pixels[index++] = r0; // Red
+                rowByte |= (1 << (7 - x));
             }
         }
+        pixels[y * 4] = rowByte;
     }
 
     HDC hdc = GetDC(NULL);
-    HBITMAP hBitmap = CreateDIBitmap(hdc, &bmi.bmiHeader, CBM_INIT, pixels, &bmi, DIB_RGB_COLORS);
+    HBITMAP hBitmap = CreateDIBitmap(hdc, &bmi.bmiHeader, CBM_INIT, pixels,
+                                     (BITMAPINFO*)&bmi, DIB_RGB_COLORS);
     ReleaseDC(NULL, hdc);
 
     if (!hBitmap)

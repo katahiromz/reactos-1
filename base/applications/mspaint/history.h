@@ -40,7 +40,7 @@ public:
     void StretchSkew(int nStretchPercentX, int nStretchPercentY, int nSkewDegX = 0, int nSkewDegY = 0);
     int GetWidth() const;
     int GetHeight() const;
-    HBITMAP CopyBitmap();
+    HBITMAP CloneDIB(INT width = 0, INT height = 0, COLORREF rgbColor = CLR_INVALID);
     HBITMAP LockBitmap();
     void UnlockBitmap(HBITMAP hbmLocked);
     void InvertColors();

@@ -97,9 +97,11 @@ HBITMAP SelectionModel::GetSelectionContents()
         return NULL;
 
     CRect rc = { 0, 0, m_rc.Width(), m_rc.Height() };
+    HBITMAP hbmNew = imageModel.CloneDIB(rc.Width(), rc.Height(), paletteModel.GetBgColor());
+    if (!hbmNew)
+        return NULL;
 
     HDC hdcMem = ::CreateCompatibleDC(NULL);
-    HBITMAP hbmNew = CreateColorDIB(rc.Width(), rc.Height(), paletteModel.GetBgColor());
     HGDIOBJ hbmOld = ::SelectObject(hdcMem, hbmNew);
     selectionModel.DrawSelection(hdcMem, paletteModel.GetBgColor(), TRUE, rc, hbmPart);
     ::SelectObject(hdcMem, hbmOld);

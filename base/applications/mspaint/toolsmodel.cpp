@@ -113,31 +113,31 @@ void ToolsModel::SetBrushWidth(INT nBrushWidth)
 void ToolsModel::MakeLineThickerOrThinner(BOOL bThinner)
 {
     INT thickness = GetLineWidth();
-    SetLineWidth(bThinner ? max(1, thickness - 1) : (thickness + 1));
+    SetLineWidth(bThinner ? __max(1, thickness - 1) : (thickness + 1));
 }
 
 void ToolsModel::MakePenThickerOrThinner(BOOL bThinner)
 {
     INT thickness = GetPenWidth();
-    SetPenWidth(bThinner ? max(1, thickness - 1) : (thickness + 1));
+    SetPenWidth(bThinner ? __max(1, thickness - 1) : (thickness + 1));
 }
 
 void ToolsModel::MakeBrushThickerOrThinner(BOOL bThinner)
 {
     INT thickness = GetBrushWidth();
-    SetBrushWidth(bThinner ? max(1, thickness - 1) : (thickness + 1));
+    SetBrushWidth(bThinner ? __max(1, thickness - 1) : (thickness + 1));
 }
 
 void ToolsModel::MakeAirBrushThickerOrThinner(BOOL bThinner)
 {
     INT thickness = GetAirBrushRadius();
-    SetAirBrushRadius(bThinner ? max(1, thickness - 1) : (thickness + 1));
+    SetAirBrushRadius(bThinner ? __max(1, thickness - 1) : (thickness + 1));
 }
 
 void ToolsModel::MakeRubberThickerOrThinner(BOOL bThinner)
 {
     INT thickness = GetRubberRadius();
-    SetRubberRadius(bThinner ? max(1, thickness - 1) : (thickness + 1));
+    SetRubberRadius(bThinner ? __max(1, thickness - 1) : (thickness + 1));
 }
 
 int ToolsModel::GetShapeStyle() const
