@@ -732,6 +732,8 @@ typedef BOOL (WINAPI *FN_KbdLayerRealDllFileNT4)(PWCHAR);
 typedef BOOL (WINAPI *FN_KbdLayerRealDllFile)(HKL, PWCHAR, PCLIENTKEYBOARDTYPE, PVOID);
 typedef BOOL (WINAPI *FN_KbdLayerMultiDescriptor)(PKBDTABLE_MULTI);
 
+#define MAX_VALID_LAYOUT_FILENAME 32
+
 static BOOL IntIsValidLayoutFileName(PCWSTR pszPath)
 {
     SIZE_T cch = 0;
@@ -749,7 +751,7 @@ static BOOL IntIsValidLayoutFileName(PCWSTR pszPath)
             return FALSE;
         }
         ++cch;
-        if (cch >= 80)
+        if (cch > MAX_VALID_LAYOUT_FILENAME)
         {
             ERR("Too long\n");
             return FALSE;

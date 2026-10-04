@@ -1,7 +1,7 @@
 /*
  * PROJECT:     ReactOS Keyboard Layouts
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
- * PURPOSE:     Multiple keyboard layout switcher for Japanese and Korean
+ * PURPOSE:     Multiple keyboard table switcher for Japanese and Korean
  * COPYRIGHT:   Copyright 2026 Katayama Hirofumi MZ <katayama.hirofumi.mz@gmail.com>
  */
 
@@ -119,7 +119,7 @@ KbdLayerRealDllFileForWBT(
     /* Read from registry */
     if (!QueryRealDllName(wszKey, wszValue, realDllName, cchRealDllName))
     {
-        /* Re-try with truncated value */
+        /* Re-try with truncated value name */
         wszValue[8] = UNICODE_NULL;
         QueryRealDllName(wszKey, wszValue, realDllName, cchRealDllName);
     }
