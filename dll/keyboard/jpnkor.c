@@ -8,6 +8,7 @@
 #define WIN32_NO_STATUS
 #include <windef.h>
 #include <winuser.h>
+#include <winreg.h>
 #include <wchar.h>
 #include <ndk/ntndk.h>
 #include <ndk/kbd.h>
@@ -72,13 +73,18 @@ QueryRealDllName(
     NtClose(hKey);
     if (!NT_SUCCESS(Status))
         return FALSE;
+    if (!pInfo->DataLength || pInfo->Type != REG_SZ)
+        return FALSE;
+    if ((pInfo->DataOffset | pInfo->DataLength) % sizeof(WCHAR))
+        return FALSE;
 
     /* original trusts DataOffset/DataLength; we bound them */
     cbEnd = pInfo->DataOffset + pInfo->DataLength;
     if (cbEnd < pInfo->DataOffset || cbEnd > cbResult || cbEnd > sizeof(aullBuf) - sizeof(WCHAR))
         return FALSE;
 
-    *(PWCHAR)(pbBuf + cbEnd) = UNICODE_NULL;
+    ((PWCHAR)pbBuf)[cbEnd / sizeof(WCHAR)] = UNICODE_NULL;
+
     Status = RtlStringCchCopyW(pszOut, cchOut, (PCWSTR)(pbBuf + pInfo->DataOffset));
     return NT_SUCCESS(Status);
 }
@@ -98,18 +104,21 @@ KbdLayerRealDllFileForWBT(
     /* Fill the default values */
     if (wLang == LANG_JAPANESE)
     {
-        RtlStringCbCopyW(realDllName, MAX_PATH * sizeof(WCHAR), L"kbd101.dll");
+        RtlStringCchCopyW(realDllName, cchRealDllName, L"kbd101.dll");
         RtlStringCbCopyW(wszKey, sizeof(wszKey), TS_KBDTYPE_MAPPING L"JPN");
     }
     else if (wLang == LANG_KOREAN)
     {
-        RtlStringCbCopyW(realDllName, MAX_PATH * sizeof(WCHAR), L"kbd101a.dll");
+        RtlStringCchCopyW(realDllName, cchRealDllName, L"kbd101a.dll");
         RtlStringCbCopyW(wszKey, sizeof(wszKey), TS_KBDTYPE_MAPPING L"KOR");
     }
     else
     {
         return FALSE;
     }
+
+    if (pClientKbdType->FunctionKey >= 10000)
+        return FALSE;
 
     Status = RtlStringCbPrintfW(wszValue, sizeof(wszValue), L"%08X%04u",
                                 pClientKbdType->SubType, pClientKbdType->FunctionKey);
@@ -180,7 +189,10 @@ ParseDynamicTableEntry(
     const DWORD *pdwData;
     PWCHAR pch;
 
-    if (pInfo->NameLength >= sizeof(pDesc->wszDllName) ||
+    if (pInfo->Type != REG_BINARY ||
+        !pInfo->NameLength ||
+        pInfo->NameLength >= sizeof(pDesc->wszDllName) ||
+        pInfo->NameLength % sizeof(WCHAR) ||
         pInfo->DataLength != 3 * sizeof(DWORD) ||
         pInfo->DataOffset > cbInfo ||
         cbInfo - pInfo->DataOffset < pInfo->DataLength)
@@ -237,8 +249,13 @@ LoadDynamicTables(_In_ PCWSTR pwszName, _Out_ PKBDTABLE_MULTI pMulti)
     {
         Status = NtEnumerateValueKey(hKey, pMulti->nTables, KeyValueFullInformation,
                                      aullBuf, sizeof(aullBuf), &cbResult);
-        if (!NT_SUCCESS(Status))
+        if (Status == STATUS_NO_MORE_ENTRIES)
             break;
+        if (!NT_SUCCESS(Status))
+        {
+            pMulti->nTables = 0;
+            break;
+        }
 
         if (!ParseDynamicTableEntry(pMulti, (PKEY_VALUE_FULL_INFORMATION)aullBuf, cbResult))
         {
@@ -284,12 +301,12 @@ SetDefaultTables(_Out_ PKBDTABLE_MULTI pMulti)
 
 /* ------------------------------------------------------------------------
  * KbdLayerMultiDescriptor @6
- *
- * Fills a KBDTABLE_MULTI: first from the registry, otherwise from the
- * built-in default list.  Always returns TRUE.
  * ---------------------------------------------------------------------- */
 BOOL WINAPI KbdLayerMultiDescriptor(_Out_ PKBDTABLE_MULTI pMulti)
 {
+    if (!pMulti)
+        return FALSE;
+    RtlZeroMemory(pMulti, sizeof(*pMulti));
     if (!LoadDynamicTables(KBD_DYNAMIC_TABLES_NAME, pMulti))
         SetDefaultTables(pMulti);
     return TRUE;

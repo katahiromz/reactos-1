@@ -306,6 +306,35 @@ UserLoadKbdDll(WCHAR *pwszLayoutPath,
     return TRUE;
 }
 
+static BOOL IntIsValidLayoutFileName(PCWSTR pszPath)
+{
+#define MAX_VALID_LAYOUT_FILENAME 32
+    SIZE_T cch = 0;
+    if (!*pszPath)
+    {
+        ERR("pszPath was empty\n");
+        return FALSE;
+    }
+
+    do
+    {
+        if (*pszPath == L'\\' || *pszPath == L'/' || *pszPath == L':')
+        {
+            ERR("*pszPath: %c\n", *pszPath);
+            return FALSE;
+        }
+        ++cch;
+        if (cch >= MAX_VALID_LAYOUT_FILENAME)
+        {
+            ERR("Too long\n");
+            return FALSE;
+        }
+        ++pszPath;
+    } while (*pszPath);
+
+    return TRUE;
+}
+
 /*
  * UserLoadKbdFile
  *
@@ -321,6 +350,7 @@ UserLoadKbdFile(IN PUNICODE_STRING pwszKLID, IN PCWSTR pszKbdFile OPTIONAL)
     WCHAR wszLayoutPath[MAX_PATH] = L"\\SystemRoot\\System32\\";
     WCHAR wszLayoutRegKey[256] = L"\\REGISTRY\\Machine\\SYSTEM\\CurrentControlSet\\"
                                  L"Control\\Keyboard Layouts\\";
+    WCHAR wszLayoutFile[MAX_PATH];
 
     /* Create keyboard layout file object */
     pkf = UserCreateObject(gHandleTable, NULL, NULL, NULL, TYPE_KBDFILE, sizeof(KBDFILE));
@@ -333,17 +363,7 @@ UserLoadKbdFile(IN PUNICODE_STRING pwszKLID, IN PCWSTR pszKbdFile OPTIONAL)
     /* Set keyboard layout name */
     _swprintf(pkf->awchKF, L"%wZ", pwszKLID);
 
-    if (pszKbdFile)
-    {
-        /* Append filename */
-        Status = RtlStringCbCatW(wszLayoutPath, sizeof(wszLayoutPath), pszKbdFile);
-        if (!NT_SUCCESS(Status))
-        {
-            ERR("Failed to append '%S'\n", pszKbdFile);
-            return NULL;
-        }
-    }
-    else
+    if (!pszKbdFile)
     {
         /* Open layout registry key */
         RtlStringCbCatW(wszLayoutRegKey, sizeof(wszLayoutRegKey), pkf->awchKF);
@@ -354,18 +374,30 @@ UserLoadKbdFile(IN PUNICODE_STRING pwszKLID, IN PCWSTR pszKbdFile OPTIONAL)
             goto cleanup;
         }
 
-        /* Read filename of layout DLL (appending) */
-        cbSize = (ULONG)(sizeof(wszLayoutPath) - wcslen(wszLayoutPath) * sizeof(WCHAR));
-        Status = RegQueryValue(hKey,
-                               L"Layout File",
-                               REG_SZ,
-                               wszLayoutPath + wcslen(wszLayoutPath),
-                               &cbSize);
+        /* Read filename of layout DLL */
+        cbSize = sizeof(wszLayoutFile);
+        Status = RegQueryValue(hKey, L"Layout File", REG_SZ, wszLayoutFile, &cbSize);
         if (!NT_SUCCESS(Status))
         {
             ERR("Can't get layout filename for %wZ (%lx)\n", pwszKLID, Status);
             goto cleanup;
         }
+
+        pszKbdFile = wszLayoutFile;
+    }
+
+    if (!IntIsValidLayoutFileName(pszKbdFile))
+    {
+        ERR("Invalid Layout File: '%S'\n", pszKbdFile);
+        goto cleanup;
+    }
+
+    /* Append filename */
+    Status = RtlStringCbCatW(wszLayoutPath, sizeof(wszLayoutPath), pszKbdFile);
+    if (!NT_SUCCESS(Status))
+    {
+        ERR("Failed to append '%S'\n", pszKbdFile);
+        goto cleanup;
     }
 
     /* Load keyboard file now */
@@ -1203,8 +1235,8 @@ NtUserLoadKeyboardLayoutEx(
     UNICODE_STRING uszSafeKLID;
     PWINSTATION_OBJECT pWinSta;
     HANDLE hSafeFile;
-    PKBDTABLE_MULTI pKbdTableMulti;
-    PKBDTABLE_DESC pKbdDesc;
+    KBDTABLE_MULTI kbdTableMulti, *pKbdTableMulti = NULL;
+    PKBDTABLE_DESC pKbdDesc = NULL;
 
     if (Flags & ~(KLF_ACTIVATE|KLF_NOTELLSHELL|KLF_REORDER|KLF_REPLACELANG|
                   KLF_SUBSTITUTE_OK|KLF_SETFORPROCESS|KLF_UNLOADPREVIOUS|
@@ -1215,21 +1247,23 @@ NtUserLoadKeyboardLayoutEx(
         return NULL;
     }
 
-    if (pTables)
-    {
-        pKbdTableMulti = pTables;
-        if (offTable < KBDTABLE_MULTI_MAX && offTable < pKbdTableMulti->nTables)
-            pKbdDesc = &pKbdTableMulti->aKbdTables[offTable];
-        else
-            pKbdDesc = NULL;
-    }
-
     RtlInitEmptyUnicodeString(&uszSafeKLID, Buffer, sizeof(Buffer));
     _SEH2_TRY
     {
         ProbeForRead(puszKLID, sizeof(*puszKLID), 1);
-        ProbeForRead(puszKLID->Buffer, sizeof(puszKLID->Length), 1);
+        ProbeForRead(puszKLID->Buffer, puszKLID->Length, 1);
         RtlCopyUnicodeString(&uszSafeKLID, puszKLID);
+        if (pTables)
+        {
+            ProbeForRead(pTables, sizeof(KBDTABLE_MULTI), 1);
+            RtlCopyMemory(&kbdTableMulti, pTables, sizeof(kbdTableMulti));
+            pKbdTableMulti = &kbdTableMulti;
+            if (offTable < KBDTABLE_MULTI_MAX && offTable < pKbdTableMulti->nTables)
+            {
+                pKbdDesc = &pKbdTableMulti->aKbdTables[offTable];
+                pKbdDesc->wszDllName[_countof(pKbdDesc->wszDllName) - 1] = UNICODE_NULL;
+            }
+        }
     }
     _SEH2_EXCEPT(EXCEPTION_EXECUTE_HANDLER)
     {

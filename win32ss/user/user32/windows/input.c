@@ -732,10 +732,9 @@ typedef BOOL (WINAPI *FN_KbdLayerRealDllFileNT4)(PWCHAR);
 typedef BOOL (WINAPI *FN_KbdLayerRealDllFile)(HKL, PWCHAR, PCLIENTKEYBOARDTYPE, PVOID);
 typedef BOOL (WINAPI *FN_KbdLayerMultiDescriptor)(PKBDTABLE_MULTI);
 
-#define MAX_VALID_LAYOUT_FILENAME 32
-
 static BOOL IntIsValidLayoutFileName(PCWSTR pszPath)
 {
+#define MAX_VALID_LAYOUT_FILENAME 32
     SIZE_T cch = 0;
     if (!*pszPath)
     {
@@ -751,7 +750,7 @@ static BOOL IntIsValidLayoutFileName(PCWSTR pszPath)
             return FALSE;
         }
         ++cch;
-        if (cch > MAX_VALID_LAYOUT_FILENAME)
+        if (cch >= MAX_VALID_LAYOUT_FILENAME)
         {
             ERR("Too long\n");
             return FALSE;
@@ -800,7 +799,7 @@ IntCheckLayoutFile(
     {
         FN_KbdLayerMultiDescriptor fnKbdLayerMultiDescriptor;
         CopyMemory(&fnKbdLayerMultiDescriptor, &fn, sizeof(fn));
-        if (!fnKbdLayerMultiDescriptor(*ppKbdTableMulti))
+        if (ppKbdTableMulti && !fnKbdLayerMultiDescriptor(*ppKbdTableMulti))
         {
             WARN("KbdLayerMultiDescriptor failed\n");
             *ppKbdTableMulti = NULL;
@@ -842,7 +841,7 @@ IntCheckLayoutFile(
 RetryWithNewFile:
     szFileName[_countof(szFileName) - 1] = UNICODE_NULL; /* Avoid buffer overrun */
     FreeLibrary(hinstLayoutFile);
-    if (pdwOffset)
+    if (pdwOffset && ppKbdTableMulti && *ppKbdTableMulti)
     {
         /* Find the best offset from ppKbdTableMulti */
         DWORD i;
