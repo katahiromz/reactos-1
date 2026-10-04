@@ -836,7 +836,7 @@ IntLoadKeyboardLayout(
     UNICODE_STRING ustrKLID;
     WCHAR wszRegKey[256] = L"SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts\\";
     WCHAR wszLayoutId[10], wszNewKLID[KL_NAMELENGTH], szImeFileName[80];
-    WCHAR wszLayoutFile[MAX_PATH], wszLayoutFilePath[MAX_PATH];
+    WCHAR wszLayoutFile[MAX_PATH], wszLayoutPath[MAX_PATH];
     HKL hKL, hNewKL;
     HKEY hKey;
     BOOL bIsIME;
@@ -881,7 +881,7 @@ IntLoadKeyboardLayout(
     StringCbCatW(wszRegKey, sizeof(wszRegKey), pwszKLID);
 
     /* Open layout registry key for read */
-    wszLayoutFilePath[0] = UNICODE_NULL;
+    wszLayoutPath[0] = UNICODE_NULL;
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, wszRegKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS)
     {
         /* Get 'Layout File' */
@@ -891,7 +891,7 @@ IntLoadKeyboardLayout(
         {
             wszLayoutFile[_countof(wszLayoutFile) - 1] = UNICODE_NULL; /* Avoid buffer overrun */
             if (!IntIsValidLayoutFileName(wszLayoutFile) ||
-                !GetSystemLibraryPath(wszLayoutFilePath, _countof(wszLayoutFilePath), wszLayoutFile))
+                !GetSystemLibraryPath(wszLayoutPath, _countof(wszLayoutPath), wszLayoutFile))
             {
                 RegCloseKey(hKey);
                 return UlongToHandle(MAKELONG(ENGLISH_US, ENGLISH_US));
@@ -953,9 +953,9 @@ IntLoadKeyboardLayout(
     hKL = (HKL)UlongToHandle(dwHKL);
 
     if (!bIsIME &&
-        !IntCheckLayoutFile(hKL, wszLayoutFilePath, _countof(wszLayoutFilePath), 0))
+        !IntCheckLayoutFile(hKL, wszLayoutPath, _countof(wszLayoutPath), 0))
     {
-        ERR("Invalid Layout File: %s\n", debugstr_w(wszLayoutFilePath));
+        ERR("Invalid Layout File: %s\n", debugstr_w(wszLayoutPath));
         return UlongToHandle(MAKELONG(ENGLISH_US, ENGLISH_US));
     }
 
