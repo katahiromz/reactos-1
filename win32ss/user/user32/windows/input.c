@@ -737,8 +737,8 @@ static BOOL
 IntCheckLayoutFile(
     IN HKL hKL,
     IN OUT PWSTR pszLayoutFile,
-    IN INT cchLayoutFile,
-    IN INT cTrials)
+    IN SIZE_T cchLayoutFile,
+    IN SIZE_T cTrials)
 {
     FARPROC fn;
     HINSTANCE hinstLayoutFile;
