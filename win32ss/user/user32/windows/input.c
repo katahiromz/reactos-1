@@ -770,7 +770,7 @@ IntCheckLayoutFile(
     hinstLayoutFile = LoadLibraryW(pszLayoutFile);
     if (!hinstLayoutFile)
     {
-        ERR("LoadLibraryW(%s) failed\n", debugstr_w(pszLayoutFile));
+        ERR("LoadLibraryW(%s) failed (%u)\n", debugstr_w(pszLayoutFile), GetLastError());
         return FALSE;
     }
 
@@ -845,7 +845,7 @@ IntLoadKeyboardLayout(
     if (!IsValidKLID(pwszKLID))
     {
         ERR("pwszKLID: %s\n", debugstr_w(pwszKLID));
-        return UlongToHandle(MAKELONG(ENGLISH_US, ENGLISH_US));
+        return NULL;
     }
 
     dwKLID = wcstoul(pwszKLID, NULL, 16);
@@ -891,10 +891,12 @@ IntLoadKeyboardLayout(
         {
             wszLayoutFile[_countof(wszLayoutFile) - 1] = UNICODE_NULL; /* Avoid buffer overrun */
             if (!IntIsValidLayoutFileName(wszLayoutFile) ||
-                !GetSystemLibraryPath(wszLayoutPath, _countof(wszLayoutPath), wszLayoutFile))
+                !GetSystemLibraryPath(wszLayoutPath, _countof(wszLayoutPath), wszLayoutFile) ||
+                GetFileAttributesW(wszLayoutPath) == INVALID_FILE_ATTRIBUTES)
             {
+                ERR("Invalid Layout File: %s\n", debugstr_w(wszLayoutFile));
                 RegCloseKey(hKey);
-                return UlongToHandle(MAKELONG(ENGLISH_US, ENGLISH_US));
+                return NULL;
             }
         }
 
@@ -932,7 +934,7 @@ IntLoadKeyboardLayout(
                 {
                     bIsIME = FALSE;
                     wHigh = 0;
-                    ERR("'%s'\n", debugstr_w(szPath));
+                    ERR("%s\n", debugstr_w(szPath));
                 }
             }
         }
@@ -943,7 +945,7 @@ IntLoadKeyboardLayout(
     else
     {
         ERR("Could not find keyboard layout %s.\n", debugstr_w(pwszKLID));
-        return UlongToHandle(MAKELONG(ENGLISH_US, ENGLISH_US));
+        return NULL;
     }
 
     if (wHigh == 0)
@@ -952,12 +954,8 @@ IntLoadKeyboardLayout(
     dwHKL = MAKELONG(wLow, wHigh);
     hKL = (HKL)UlongToHandle(dwHKL);
 
-    if (!bIsIME &&
-        !IntCheckLayoutFile(hKL, wszLayoutPath, _countof(wszLayoutPath), 0))
-    {
-        ERR("Invalid Layout File: %s\n", debugstr_w(wszLayoutPath));
-        return UlongToHandle(MAKELONG(ENGLISH_US, ENGLISH_US));
-    }
+    if (!bIsIME && !IntCheckLayoutFile(hKL, wszLayoutPath, _countof(wszLayoutPath), 0))
+        return NULL;
 
     RtlInitUnicodeString(&ustrKLID, pwszKLID);
     hNewKL = NtUserLoadKeyboardLayoutEx(NULL, 0, NULL, hklUnload, &ustrKLID, dwHKL, Flags);
