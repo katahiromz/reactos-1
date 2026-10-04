@@ -361,7 +361,6 @@ UserLoadKbdFile(IN PUNICODE_STRING pwszKLID, IN PCWSTR pszKbdFile OPTIONAL)
                                REG_SZ,
                                wszLayoutPath + wcslen(wszLayoutPath),
                                &cbSize);
-
         if (!NT_SUCCESS(Status))
         {
             ERR("Can't get layout filename for %wZ (%lx)\n", pwszKLID, Status);
