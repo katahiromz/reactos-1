@@ -354,7 +354,7 @@ UserLoadKbdFile(IN PUNICODE_STRING pwszKLID, IN PCWSTR pszKbdFile OPTIONAL)
             goto cleanup;
         }
 
-        /* Read filename of layout DLL */
+        /* Read filename of layout DLL (appending) */
         cbSize = (ULONG)(sizeof(wszLayoutPath) - wcslen(wszLayoutPath) * sizeof(WCHAR));
         Status = RegQueryValue(hKey,
                                L"Layout File",
