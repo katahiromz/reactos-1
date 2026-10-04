@@ -333,9 +333,9 @@ UserLoadKbdFile(IN PUNICODE_STRING pwszKLID, IN PCWSTR pszKbdFile OPTIONAL)
     /* Set keyboard layout name */
     _swprintf(pkf->awchKF, L"%wZ", pwszKLID);
 
-    /* Read filename of layout DLL */
     if (pszKbdFile)
     {
+        /* Append filename */
         RtlStringCbCatW(wszLayoutPath, sizeof(wszLayoutPath), pszKbdFile);
     }
     else
@@ -349,6 +349,7 @@ UserLoadKbdFile(IN PUNICODE_STRING pwszKLID, IN PCWSTR pszKbdFile OPTIONAL)
             goto cleanup;
         }
 
+        /* Read filename of layout DLL */
         cbSize = (ULONG)(sizeof(wszLayoutPath) - wcslen(wszLayoutPath) * sizeof(WCHAR));
         Status = RegQueryValue(hKey,
                                L"Layout File",
