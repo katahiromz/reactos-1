@@ -690,15 +690,28 @@ static inline BOOL IsValidKLID(_In_ LPCWSTR pwszKLID)
     return (pwszKLID != NULL) && (wcsspn(pwszKLID, L"0123456789ABCDEFabcdef") == (KL_NAMELENGTH - 1));
 }
 
-VOID GetSystemLibraryPath(LPWSTR pszPath, INT cchPath, LPCWSTR pszFileName)
+static BOOL
+GetSystemLibraryPath(
+    _Out_writes_(cchPath) PWSTR pszPath,
+    _In_ SIZE_T cchPath,
+    _In_ PCWSTR pszFileName)
 {
     WCHAR szSysDir[MAX_PATH];
-    GetSystemDirectoryW(szSysDir, _countof(szSysDir));
-    StringCchPrintfW(pszPath, cchPath, L"%s\\%s", szSysDir, pszFileName);
+    HRESULT hr;
+    if (!GetSystemDirectoryW(szSysDir, _countof(szSysDir)))
+    {
+        ERR("GetSystemDirectoryW failed (%u)\n", GetLastError());
+        return FALSE;
+    }
+    hr = StringCchPrintfW(pszPath, cchPath, L"%s\\%s", szSysDir, pszFileName);
+    if (FAILED(hr))
+        ERR("0x%08X\n", hr);
+    return SUCCEEDED(hr);
 }
 
 #define ENGLISH_US MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US)
 
+/* Layout File procedure ordinals */
 #define IFN_KbdLayerDescriptor      1
 #define IFN_KbdNlsLayerDescriptor   2
 #define IFN_KbdLayerRealDllFileNT4  3
@@ -712,6 +725,7 @@ typedef struct tagCLIENTKEYBOARDTYPE
     ULONG FunctionKey;
 } CLIENTKEYBOARDTYPE, *PCLIENTKEYBOARDTYPE;
 
+/* Layout File procedure function types */
 typedef PKBDTABLES (WINAPI *FN_KbdLayerDescriptor)(VOID);
 typedef PKBDNLSTABLES (WINAPI *FN_KbdNlsLayerDescriptor)(VOID);
 typedef BOOL (WINAPI *FN_KbdLayerRealDllFileNT4)(PWCHAR);
@@ -721,12 +735,18 @@ typedef BOOL (WINAPI *FN_KbdLayerMultiDescriptor)(PKBDTABLE_MULTI);
 static BOOL IntIsValidLayoutFileName(PCWSTR pszPath)
 {
     if (!*pszPath)
+    {
+        ERR("pszPath was empty\n");
         return FALSE;
+    }
 
     do
     {
         if (*pszPath == L'\\' || *pszPath == L'/' || *pszPath == L':')
+        {
+            ERR("*pszPath: %c\n", *pszPath);
             return FALSE;
+        }
         ++pszPath;
     } while (*pszPath);
 
@@ -750,7 +770,7 @@ IntCheckLayoutFile(
     hinstLayoutFile = LoadLibraryW(pszLayoutFile);
     if (!hinstLayoutFile)
     {
-        ERR("LoadLibraryW(%S) failed\n", pszLayoutFile);
+        ERR("LoadLibraryW(%s) failed\n", debugstr_w(pszLayoutFile));
         return FALSE;
     }
 
@@ -763,7 +783,7 @@ IntCheckLayoutFile(
         return FALSE;
     }
 
-    /* Check KbdLayerRealDllFile procedure */
+    /* Check KbdLayerRealDllFile procedure (if any) */
     fn = GetProcAddress(hinstLayoutFile, MAKEINTRESOURCEA(IFN_KbdLayerRealDllFile));
     if (fn)
     {
@@ -775,7 +795,7 @@ IntCheckLayoutFile(
         WARN("KbdLayerRealDllFile failed\n");
     }
 
-    /* Check KbdLayerRealDllFileNT4 procedure */
+    /* Check KbdLayerRealDllFileNT4 procedure (if any) */
     fn = GetProcAddress(hinstLayoutFile, MAKEINTRESOURCEA(IFN_KbdLayerRealDllFileNT4));
     if (fn)
     {
@@ -793,10 +813,9 @@ IntCheckLayoutFile(
 RetryWithNewFile:
     szFileName[_countof(szFileName) - 1] = UNICODE_NULL; /* Avoid buffer overrun */
     FreeLibrary(hinstLayoutFile);
-    if (!IntIsValidLayoutFileName(szFileName))
-        return FALSE;
-    GetSystemLibraryPath(pszLayoutFile, cchLayoutFile, szFileName);
-    return IntCheckLayoutFile(hKL, pszLayoutFile, cchLayoutFile, cTrials + 1);
+    return IntIsValidLayoutFileName(szFileName) &&
+           GetSystemLibraryPath(pszLayoutFile, cchLayoutFile, szFileName) &&
+           IntCheckLayoutFile(hKL, pszLayoutFile, cchLayoutFile, cTrials + 1);
 }
 
 /*
@@ -865,6 +884,20 @@ IntLoadKeyboardLayout(
     wszLayoutFilePath[0] = UNICODE_NULL;
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, wszRegKey, 0, KEY_READ, &hKey) == ERROR_SUCCESS)
     {
+        /* Get 'Layout File' */
+        dwSize = sizeof(wszLayoutFile);
+        if (RegQueryValueExW(hKey, L"Layout File", NULL, &dwType, (PBYTE)wszLayoutFile,
+                             &dwSize) == ERROR_SUCCESS && dwType == REG_SZ)
+        {
+            wszLayoutFile[_countof(wszLayoutFile) - 1] = UNICODE_NULL; /* Avoid buffer overrun */
+            if (!IntIsValidLayoutFileName(wszLayoutFile) ||
+                !GetSystemLibraryPath(wszLayoutFilePath, _countof(wszLayoutFilePath), wszLayoutFile))
+            {
+                RegCloseKey(hKey);
+                return UlongToHandle(MAKELONG(ENGLISH_US, ENGLISH_US));
+            }
+        }
+
         /* Get 'Layout Id' */
         dwSize = sizeof(wszLayoutId);
         if (RegQueryValueExW(hKey, L"Layout Id", NULL, &dwType, (LPBYTE)wszLayoutId,
@@ -873,21 +906,6 @@ IntLoadKeyboardLayout(
             wszLayoutId[_countof(wszLayoutId) - 1] = UNICODE_NULL; /* Avoid buffer overrun */
             /* If Layout Id is specified, use this value | f000 as HIWORD */
             wHigh = (0xF000 | wcstoul(wszLayoutId, NULL, 16));
-        }
-
-        /* Get 'Layout File' */
-        dwSize = sizeof(wszLayoutFile);
-        if (RegQueryValueExW(hKey, L"Layout File", NULL, &dwType, (LPBYTE)wszLayoutFile,
-                             &dwSize) == ERROR_SUCCESS && dwType == REG_SZ)
-        {
-            wszLayoutFile[_countof(wszLayoutFile) - 1] = UNICODE_NULL; /* Avoid buffer overrun */
-            if (!IntIsValidLayoutFileName(wszLayoutFile))
-            {
-                ERR("IntIsValidLayoutFileName failed. pwszKLID: %s\n", debugstr_w(pwszKLID));
-                RegCloseKey(hKey);
-                return UlongToHandle(MAKELONG(ENGLISH_US, ENGLISH_US));
-            }
-            GetSystemLibraryPath(wszLayoutFilePath, _countof(wszLayoutFilePath), wszLayoutFile);
         }
 
         if (bIsIME)
@@ -905,11 +923,11 @@ IntLoadKeyboardLayout(
             {
                 WCHAR szPath[MAX_PATH];
                 szImeFileName[_countof(szImeFileName) - 1] = UNICODE_NULL;
-                GetSystemLibraryPath(szPath, _countof(szPath), szImeFileName);
 
                 /* We don't allow the invalid "IME File" values due to security reason */
                 if (dwType != REG_SZ ||
                     !IntIsValidLayoutFileName(szImeFileName) ||
+                    !GetSystemLibraryPath(szPath, _countof(szPath), szImeFileName) ||
                     GetFileAttributesW(szPath) == INVALID_FILE_ATTRIBUTES) /* Does not exist? */
                 {
                     bIsIME = FALSE;
@@ -924,7 +942,7 @@ IntLoadKeyboardLayout(
     }
     else
     {
-        ERR("Could not find keyboard layout %S.\n", pwszKLID);
+        ERR("Could not find keyboard layout %s.\n", debugstr_w(pwszKLID));
         return UlongToHandle(MAKELONG(ENGLISH_US, ENGLISH_US));
     }
 
@@ -937,7 +955,7 @@ IntLoadKeyboardLayout(
     if (!bIsIME &&
         !IntCheckLayoutFile(hKL, wszLayoutFilePath, _countof(wszLayoutFilePath), 0))
     {
-        ERR("Could not validate 'Layout File': %S.\n", wszLayoutFilePath);
+        ERR("Invalid Layout File: %s\n", debugstr_w(wszLayoutFilePath));
         return UlongToHandle(MAKELONG(ENGLISH_US, ENGLISH_US));
     }
 
