@@ -734,6 +734,7 @@ typedef BOOL (WINAPI *FN_KbdLayerMultiDescriptor)(PKBDTABLE_MULTI);
 
 static BOOL IntIsValidLayoutFileName(PCWSTR pszPath)
 {
+    SIZE_T cch = 0;
     if (!*pszPath)
     {
         ERR("pszPath was empty\n");
@@ -745,6 +746,12 @@ static BOOL IntIsValidLayoutFileName(PCWSTR pszPath)
         if (*pszPath == L'\\' || *pszPath == L'/' || *pszPath == L':')
         {
             ERR("*pszPath: %c\n", *pszPath);
+            return FALSE;
+        }
+        ++cch;
+        if (cch >= 80)
+        {
+            ERR("Too long\n");
             return FALSE;
         }
         ++pszPath;
@@ -834,9 +841,8 @@ IntLoadKeyboardLayout(
 {
     DWORD dwKLID, dwHKL, dwType, dwSize;
     UNICODE_STRING ustrKLID;
-    WCHAR wszRegKey[256] = L"SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts\\";
+    WCHAR wszRegKey[MAX_PATH], wszLayoutFile[80], wszLayoutPath[MAX_PATH];
     WCHAR wszLayoutId[10], wszNewKLID[KL_NAMELENGTH], szImeFileName[80];
-    WCHAR wszLayoutFile[MAX_PATH], wszLayoutPath[MAX_PATH];
     HKL hKL, hNewKL;
     HKEY hKey;
     BOOL bIsIME;
@@ -878,6 +884,8 @@ IntLoadKeyboardLayout(
     }
 
     /* Append KLID at the end of registry key */
+    StringCbCopyW(wszRegKey, sizeof(wszRegKey),
+                  L"SYSTEM\\CurrentControlSet\\Control\\Keyboard Layouts\\");
     StringCbCatW(wszRegKey, sizeof(wszRegKey), pwszKLID);
 
     /* Open layout registry key for read */
