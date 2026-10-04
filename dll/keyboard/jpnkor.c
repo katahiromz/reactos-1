@@ -1,14 +1,13 @@
 /*
  * PROJECT:     ReactOS Keyboard Layouts
  * LICENSE:     GPL-2.0-or-later (https://spdx.org/licenses/GPL-2.0-or-later)
- * PURPOSE:     Japanese and Korean multiple keyboard layout switcher
+ * PURPOSE:     Multiple keyboard layout switcher for Japanese and Korean
  * COPYRIGHT:   Copyright 2026 Katayama Hirofumi MZ <katayama.hirofumi.mz@gmail.com>
  */
 
 #define WIN32_NO_STATUS
 #include <windef.h>
 #include <winuser.h>
-#include <winnt.h>
 #include <wchar.h>
 #include <ndk/ntndk.h>
 #include <ndk/kbd.h>
@@ -39,13 +38,18 @@ typedef struct tagCLIENTKEYBOARDTYPE
 #define KBD_DYNAMIC_TABLES_KEY \
     L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\Keyboard Layout\\Dynamic Tables\\"
 
-/*
- * Reads REG_SZ-like value pwszValueName under pwszKeyPath into pszOut.
- * Like the original, pszOut has no size argument: it must hold the longest
- * possible value (< 256 WCHARs here).
- */
+/* Subkey under "Dynamic Tables". NOTE: the original kbdkor.dll also uses "kbdjpn". */
+#ifndef KBD_DYNAMIC_TABLES_NAME
+    #define KBD_DYNAMIC_TABLES_NAME L"kbdjpn"
+#endif
+
+/* Reads REG_SZ-like value pwszValueName under pwszKeyPath into pszOut */
 static BOOL
-QueryRealDllName(PCWSTR pwszKeyPath, PCWSTR pwszValueName, PWCHAR pszOut, INT cchOut)
+QueryRealDllName(
+    _In_ PCWSTR pwszKeyPath,
+    _In_ PCWSTR pwszValueName,
+    _Out_writes_(cchOut) PWCHAR pszOut,
+    _In_ UINT cchOut)
 {
     UNICODE_STRING KeyName, ValueName;
     OBJECT_ATTRIBUTES oa;
@@ -75,23 +79,23 @@ QueryRealDllName(PCWSTR pwszKeyPath, PCWSTR pwszValueName, PWCHAR pszOut, INT cc
         return FALSE;
 
     *(PWCHAR)(pbBuf + cbEnd) = UNICODE_NULL;
-    RtlStringCchCopyW(pszOut, cchOut, (PCWSTR)(pbBuf + pInfo->DataOffset));
-    return TRUE;
+    Status = RtlStringCchCopyW(pszOut, cchOut, (PCWSTR)(pbBuf + pInfo->DataOffset));
+    return NT_SUCCESS(Status);
 }
 
 /* Terminal Server (Hydra) path: pClientKbdType != NULL */
 static BOOL
 KbdLayerRealDllFileForWBT(
     _In_ HKL hKL,
-    _Out_ PWCHAR realDllName,
-    _In_ INT cchRealDllName,
+    _Out_writes_(cchRealDllName) PWCHAR realDllName,
+    _In_ UINT cchRealDllName,
     _In_ PCLIENTKEYBOARDTYPE pClientKbdType)
 {
-    WCHAR wszKey[MAX_PATH];
-    WCHAR wszValue[8 + 4 + 1];
+    WCHAR wszKey[MAX_PATH], wszValue[8 + 4 + 1];
     WORD wLang = PRIMARYLANGID(HandleToUlong(hKL));
     NTSTATUS Status;
 
+    /* Fill the default values */
     if (wLang == LANG_JAPANESE)
     {
         RtlStringCbCopyW(realDllName, MAX_PATH * sizeof(WCHAR), L"kbd101.dll");
@@ -112,8 +116,10 @@ KbdLayerRealDllFileForWBT(
     if (!NT_SUCCESS(Status))
         return FALSE;
 
+    /* Read from registry */
     if (!QueryRealDllName(wszKey, wszValue, realDllName, cchRealDllName))
     {
+        /* Re-try with truncated value */
         wszValue[8] = UNICODE_NULL;
         QueryRealDllName(wszKey, wszValue, realDllName, cchRealDllName);
     }
@@ -121,10 +127,13 @@ KbdLayerRealDllFileForWBT(
     return TRUE;
 }
 
+/* ------------------------------------------------------------------------
+ * KbdLayerRealDllFile @5
+ * ------------------------------------------------------------------------ */
 BOOL WINAPI
 KbdLayerRealDllFile(
     _In_ HKL hKL,
-    _Out_ PWCHAR realDllName,
+    _Out_writes_(MAX_PATH) PWCHAR realDllName,
     _In_opt_ PCLIENTKEYBOARDTYPE pClientKbdType,
     _In_opt_ PVOID reserved)
 {
@@ -151,31 +160,21 @@ KbdLayerRealDllFile(
     return QueryRealDllName(I8042PRT_PARAMS, wszValue, realDllName, MAX_PATH);
 }
 
+/* ------------------------------------------------------------------------
+ * KbdLayerRealDllFileNT4 @3
+ * ------------------------------------------------------------------------ */
 BOOL WINAPI
-KbdLayerRealDllFileNT4(_Out_ PWCHAR realDllName)
+KbdLayerRealDllFileNT4(
+    _Out_writes_(MAX_PATH) PWCHAR realDllName)
 {
     return QueryRealDllName(I8042PRT_PARAMS, L"LayerDriver", realDllName, MAX_PATH);
 }
 
-/* ------------------------------------------------------------------------
- * KbdLayerMultiDescriptor
- *
- * Fills a KBDTABLE_MULTI: first from the registry, otherwise from the
- * built-in default list.  Always returns TRUE.
- * ---------------------------------------------------------------------- */
-
-/* Subkey under "Dynamic Tables". NOTE: the original kbdkor.dll also uses "kbdjpn". */
-#ifndef KBD_DYNAMIC_TABLES_NAME
-#define KBD_DYNAMIC_TABLES_NAME L"kbdjpn"
-#endif
-
-/*
- * One registry value = one table.
- *   value name : "<dll name>[,anything]"   (< 32 WCHARs)
- *   value data : 12 bytes = { 0, dwType, dwSubType }  (first DWORD must be 0)
- */
 static BOOL
-ParseDynamicTableEntry(PKBDTABLE_MULTI pMulti, PKEY_VALUE_FULL_INFORMATION pInfo, ULONG cbInfo)
+ParseDynamicTableEntry(
+    _Out_ PKBDTABLE_MULTI pMulti,
+    _In_ PKEY_VALUE_FULL_INFORMATION pInfo,
+    _In_ ULONG cbInfo)
 {
     PKBDTABLE_DESC pDesc = &pMulti->aKbdTables[pMulti->nTables];
     const DWORD *pdwData;
@@ -210,7 +209,7 @@ ParseDynamicTableEntry(PKBDTABLE_MULTI pMulti, PKEY_VALUE_FULL_INFORMATION pInfo
 
 /* TRUE if at least one table was read. A malformed entry discards everything. */
 static BOOL
-LoadDynamicTables(PCWSTR pwszName, PKBDTABLE_MULTI pMulti)
+LoadDynamicTables(_In_ PCWSTR pwszName, _Out_ PKBDTABLE_MULTI pMulti)
 {
     WCHAR wszPath[260];
     UNICODE_STRING KeyName;
@@ -256,20 +255,20 @@ LoadDynamicTables(PCWSTR pwszName, PKBDTABLE_MULTI pMulti)
 }
 
 static VOID
-SetDefaultTables(PKBDTABLE_MULTI pMulti)
+SetDefaultTables(_Out_ PKBDTABLE_MULTI pMulti)
 {
     static const struct { PCWSTR pwszDll; DWORD dwType, dwSubType; } s_Defaults[] =
     {
-#ifdef KBD_KOREAN   /* kbdkor.dll */
+#ifdef KBD_KOREAN  /* kbdkor.dll */
         { L"kbd101a.dll", KBD_TYPE_IBM_ENHANCED, KBD_SUBTYPE_ENGLISH_101 },
         { L"kbd103.dll",  KBD_TYPE_KOREAN,       KBD_SUBTYPE_KOREAN_103 },
-#else               /* kbdjpn.dll */
+#else              /* kbdjpn.dll */
         { L"kbd101.dll",  KBD_TYPE_IBM_ENHANCED, KBD_SUBTYPE_ENGLISH_101 },
         { L"kbd106.dll",  KBD_TYPE_JAPANESE,     KBD_SUBTYPE_JAPANESE_106 },
         { L"kbdnec.dll",  KBD_TYPE_JAPANESE,     KBD_SUBTYPE_JAPANESE_NEC },
 #endif
     };
-    UINT i;
+    SIZE_T i;
 
     RtlZeroMemory(pMulti, sizeof(*pMulti));
     pMulti->nTables = ARRAYSIZE(s_Defaults);
@@ -283,6 +282,12 @@ SetDefaultTables(PKBDTABLE_MULTI pMulti)
     }
 }
 
+/* ------------------------------------------------------------------------
+ * KbdLayerMultiDescriptor @6
+ *
+ * Fills a KBDTABLE_MULTI: first from the registry, otherwise from the
+ * built-in default list.  Always returns TRUE.
+ * ---------------------------------------------------------------------- */
 BOOL WINAPI KbdLayerMultiDescriptor(_Out_ PKBDTABLE_MULTI pMulti)
 {
     if (!LoadDynamicTables(KBD_DYNAMIC_TABLES_NAME, pMulti))

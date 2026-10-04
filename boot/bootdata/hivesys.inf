@@ -972,7 +972,26 @@ HKLM,"SYSTEM\CurrentControlSet\Control\NetworkProvider\Order","ProviderOrder",0x
 
 ; Japanese and Korean keyboard settings (used in kbdjpn and kbdkor)
 HKLM,"SYSTEM\CurrentControlSet\Services\i8042prt\Parameters","LayerDriver JPN",0x00000000,"kbd106.dll"
-HKLM,"SYSTEM\CurrentControlSet\Services\i8042prt\Parameters","LayerDriver KOR",0x00000000,"kbd101a.dll"
+HKLM,"SYSTEM\CurrentControlSet\Services\i8042prt\Parameters","LayerDriver KOR",0x00000000,"kbd103.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\JPN","00000000",0x00000000,"kbd101.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\JPN","000000000017",0x00000000,"kbdlk41a.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\JPN","00000001",0x00000000,"kbdax2.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\JPN","00000002",0x00000000,"kbd106.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\JPN","000000020015",0x00000000,"kbdnecat.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\JPN","000000020017",0x00000000,"kbdlk41j.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\JPN","00000003",0x00000000,"kbdibm02.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\JPN","00000D01",0x00000000,"kbdnecnt.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\JPN","00000D04",0x00000000,"kbdnecnt.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\JPN","00010002",0x00000000,"kbd106n.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\JPN","00010D01",0x00000000,"kbdnec95.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\JPN","00010D04",0x00000000,"kbdnec95.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\JPN","00020002",0x00000000,"f3ahvoas.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\JPN","00020D01",0x00000000,"kbdnecat.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\JPN","00020D04",0x00000000,"kbdnecat.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\KOR","00000003",0x00000000,"kbd101a.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\KOR","00000004",0x00000000,"kbd101b.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\KOR","00000005",0x00000000,"kbd101c.dll"
+HKLM,"SYSTEM\CurrentControlSet\Control\Terminal Server\KeyboardType Mapping\KOR","00000006",0x00000000,"kbd103.dll"
 
 ; NLS Files
 HKLM,"SYSTEM\CurrentControlSet\Control\Nls\CodePage","37",0x00000000,"c_037.nls"
