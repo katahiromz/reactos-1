@@ -765,7 +765,9 @@ IntCheckLayoutFile(
     IN HKL hKL,
     IN OUT PWSTR pszLayoutFile,
     IN SIZE_T cchLayoutFile,
-    IN SIZE_T cTrials)
+    IN SIZE_T cTrials,
+    OUT PKBDTABLE_MULTI* ppKbdTableMulti,
+    OUT PDWORD pdwOffset)
 {
     FARPROC fn;
     HINSTANCE hinstLayoutFile;
@@ -788,6 +790,19 @@ IntCheckLayoutFile(
         ERR("KbdLayerDescriptor not found\n");
         FreeLibrary(hinstLayoutFile);
         return FALSE;
+    }
+
+    /* Check KbdLayerMultiDescriptor procedure (if any) */
+    fn = GetProcAddress(hinstLayoutFile, MAKEINTRESOURCEA(IFN_KbdLayerMultiDescriptor));
+    if (fn)
+    {
+        FN_KbdLayerMultiDescriptor fnKbdLayerMultiDescriptor;
+        CopyMemory(&fnKbdLayerMultiDescriptor, &fn, sizeof(fn));
+        if (!fnKbdLayerMultiDescriptor(*ppKbdTableMulti))
+        {
+            WARN("KbdLayerMultiDescriptor failed\n");
+            *ppKbdTableMulti = NULL;
+        }
     }
 
     /* Check KbdLayerRealDllFile procedure (if any) */
@@ -814,15 +829,36 @@ IntCheckLayoutFile(
         WARN("KbdLayerRealDllFileNT4 failed\n");
     }
 
+    if (ppKbdTableMulti)
+        *ppKbdTableMulti = NULL;
+    if (pdwOffset)
+        *pdwOffset = 0;
+
     FreeLibrary(hinstLayoutFile);
     return TRUE;
 
 RetryWithNewFile:
     szFileName[_countof(szFileName) - 1] = UNICODE_NULL; /* Avoid buffer overrun */
     FreeLibrary(hinstLayoutFile);
+    if (pdwOffset)
+    {
+        /* Find the best offset from ppKbdTableMulti */
+        DWORD i;
+        PKBDTABLE_DESC pKbdTables = (*ppKbdTableMulti)->aKbdTables;
+        *pdwOffset = 0;
+        for (i = 0; i < KBDTABLE_MULTI_MAX && i < (*ppKbdTableMulti)->nTables; ++i)
+        {
+            if (!lstrcmpiW(pKbdTables[i].wszDllName, szFileName))
+            {
+                *pdwOffset = i;
+                break;
+            }
+        }
+    }
+    /* Validate and recurse */
     return IntIsValidLayoutFileName(szFileName) &&
            GetSystemLibraryPath(pszLayoutFile, cchLayoutFile, szFileName) &&
-           IntCheckLayoutFile(hKL, pszLayoutFile, cchLayoutFile, cTrials + 1);
+           IntCheckLayoutFile(hKL, pszLayoutFile, cchLayoutFile, cTrials + 1, NULL, NULL);
 }
 
 /*
@@ -847,6 +883,8 @@ IntLoadKeyboardLayout(
     HKEY hKey;
     BOOL bIsIME;
     WORD wLow, wHigh;
+    KBDTABLE_MULTI kbdTableMulti, *pKbdTableMulti = NULL;
+    DWORD offTable = 0;
 
     if (!IsValidKLID(pwszKLID))
     {
@@ -962,11 +1000,17 @@ IntLoadKeyboardLayout(
     dwHKL = MAKELONG(wLow, wHigh);
     hKL = (HKL)UlongToHandle(dwHKL);
 
-    if (!bIsIME && !IntCheckLayoutFile(hKL, wszLayoutPath, _countof(wszLayoutPath), 0))
+    ZeroMemory(&kbdTableMulti, sizeof(kbdTableMulti));
+    pKbdTableMulti = &kbdTableMulti;
+    if (!bIsIME &&
+        !IntCheckLayoutFile(hKL, wszLayoutPath, _countof(wszLayoutPath), 0,
+                            &pKbdTableMulti, &offTable))
+    {
         return NULL;
+    }
 
     RtlInitUnicodeString(&ustrKLID, pwszKLID);
-    hNewKL = NtUserLoadKeyboardLayoutEx(NULL, 0, NULL, hklUnload, &ustrKLID, dwHKL, Flags);
+    hNewKL = NtUserLoadKeyboardLayoutEx(NULL, offTable, pKbdTableMulti, hklUnload, &ustrKLID, dwHKL, Flags);
     CliImmInitializeHotKeys(SETIMEHOTKEY_ADD, hNewKL);
     return hNewKL;
 }

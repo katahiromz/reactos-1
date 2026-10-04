@@ -312,7 +312,7 @@ UserLoadKbdDll(WCHAR *pwszLayoutPath,
  * Loads keyboard layout DLL and creates KBDFILE object
  */
 static PKBDFILE
-UserLoadKbdFile(PUNICODE_STRING pwszKLID)
+UserLoadKbdFile(IN PUNICODE_STRING pwszKLID, IN PCWSTR pszKbdFile OPTIONAL)
 {
     PKBDFILE pkf, pRet = NULL;
     NTSTATUS Status;
@@ -333,27 +333,34 @@ UserLoadKbdFile(PUNICODE_STRING pwszKLID)
     /* Set keyboard layout name */
     _swprintf(pkf->awchKF, L"%wZ", pwszKLID);
 
-    /* Open layout registry key */
-    RtlStringCbCatW(wszLayoutRegKey, sizeof(wszLayoutRegKey), pkf->awchKF);
-    Status = RegOpenKey(wszLayoutRegKey, &hKey);
-    if (!NT_SUCCESS(Status))
-    {
-        ERR("Failed to open keyboard layouts registry key %ws (%lx)\n", wszLayoutRegKey, Status);
-        goto cleanup;
-    }
-
     /* Read filename of layout DLL */
-    cbSize = (ULONG)(sizeof(wszLayoutPath) - wcslen(wszLayoutPath)*sizeof(WCHAR));
-    Status = RegQueryValue(hKey,
-                           L"Layout File",
-                           REG_SZ,
-                           wszLayoutPath + wcslen(wszLayoutPath),
-                           &cbSize);
-
-    if (!NT_SUCCESS(Status))
+    if (pszKbdFile)
     {
-        ERR("Can't get layout filename for %wZ (%lx)\n", pwszKLID, Status);
-        goto cleanup;
+        RtlStringCbCatW(wszLayoutPath, sizeof(wszLayoutPath), pszKbdFile);
+    }
+    else
+    {
+        /* Open layout registry key */
+        RtlStringCbCatW(wszLayoutRegKey, sizeof(wszLayoutRegKey), pkf->awchKF);
+        Status = RegOpenKey(wszLayoutRegKey, &hKey);
+        if (!NT_SUCCESS(Status))
+        {
+            ERR("Failed to open keyboard layouts registry key %ws (%lx)\n", wszLayoutRegKey, Status);
+            goto cleanup;
+        }
+
+        cbSize = (ULONG)(sizeof(wszLayoutPath) - wcslen(wszLayoutPath) * sizeof(WCHAR));
+        Status = RegQueryValue(hKey,
+                               L"Layout File",
+                               REG_SZ,
+                               wszLayoutPath + wcslen(wszLayoutPath),
+                               &cbSize);
+
+        if (!NT_SUCCESS(Status))
+        {
+            ERR("Can't get layout filename for %wZ (%lx)\n", pwszKLID, Status);
+            goto cleanup;
+        }
     }
 
     /* Load keyboard file now */
@@ -391,7 +398,7 @@ cleanup:
  * Loads keyboard layout and creates KL object
  */
 static PKL
-co_UserLoadKbdLayout(PUNICODE_STRING pustrKLID, HKL hKL)
+co_UserLoadKbdLayout(PUNICODE_STRING pustrKLID, HKL hKL, PKBDTABLE_DESC pKbdDesc OPTIONAL)
 {
     LCID lCid;
     CHARSETINFO cs;
@@ -406,7 +413,7 @@ co_UserLoadKbdLayout(PUNICODE_STRING pustrKLID, HKL hKL)
     }
 
     pKl->hkl = hKL;
-    pKl->spkf = UserLoadKbdFile(pustrKLID);
+    pKl->spkf = UserLoadKbdFile(pustrKLID, (pKbdDesc ? pKbdDesc->wszDllName : NULL));
 
     /* Dereference keyboard layout */
     UserDereferenceObject(pKl);
@@ -904,6 +911,7 @@ HKL APIENTRY
 co_IntLoadKeyboardLayoutEx(
     IN OUT PWINSTATION_OBJECT pWinSta,
     IN HANDLE hSafeFile,
+    IN PKBDTABLE_DESC pKbdDesc OPTIONAL,
     IN HKL hOldKL,
     IN PUNICODE_STRING puszSafeKLID,
     IN HKL hNewKL,
@@ -931,7 +939,7 @@ co_IntLoadKeyboardLayoutEx(
     if (!pNewKL)
     {
         /* It wasn't, so load it. */
-        pNewKL = co_UserLoadKbdLayout(puszSafeKLID, hNewKL);
+        pNewKL = co_UserLoadKbdLayout(puszSafeKLID, hNewKL, pKbdDesc);
         if (!pNewKL)
             return NULL;
 
@@ -1172,7 +1180,6 @@ cleanup:
  * Loads keyboard layout with given locale id
  *
  * NOTE: We adopt a different design from Microsoft's one due to security reason.
- *       We don't use the 3rd parameter of NtUserLoadKeyboardLayoutEx.
  *       See https://seclists.org/fulldisclosure/2012/Jul/137
  */
 HKL
@@ -1191,9 +1198,8 @@ NtUserLoadKeyboardLayoutEx(
     UNICODE_STRING uszSafeKLID;
     PWINSTATION_OBJECT pWinSta;
     HANDLE hSafeFile;
-
-    UNREFERENCED_PARAMETER(offTable);
-    UNREFERENCED_PARAMETER(pTables);
+    PKBDTABLE_MULTI pKbdTableMulti;
+    PKBDTABLE_DESC pKbdDesc;
 
     if (Flags & ~(KLF_ACTIVATE|KLF_NOTELLSHELL|KLF_REORDER|KLF_REPLACELANG|
                   KLF_SUBSTITUTE_OK|KLF_SETFORPROCESS|KLF_UNLOADPREVIOUS|
@@ -1202,6 +1208,15 @@ NtUserLoadKeyboardLayoutEx(
         ERR("Invalid flags: %x\n", Flags);
         EngSetLastError(ERROR_INVALID_FLAGS);
         return NULL;
+    }
+
+    if (pTables)
+    {
+        pKbdTableMulti = pTables;
+        if (offTable < KBDTABLE_MULTI_MAX && offTable < pKbdTableMulti->nTables)
+            pKbdDesc = &pKbdTableMulti->aKbdTables[offTable];
+        else
+            pKbdDesc = NULL;
     }
 
     RtlInitEmptyUnicodeString(&uszSafeKLID, Buffer, sizeof(Buffer));
@@ -1224,6 +1239,7 @@ NtUserLoadKeyboardLayoutEx(
     pWinSta = IntGetProcessWindowStation(NULL);
     hRetKL = co_IntLoadKeyboardLayoutEx(pWinSta,
                                         hSafeFile,
+                                        pKbdDesc,
                                         hOldKL,
                                         &uszSafeKLID,
                                         UlongToHandle(dwNewKL),
