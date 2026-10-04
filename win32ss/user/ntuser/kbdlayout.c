@@ -336,7 +336,12 @@ UserLoadKbdFile(IN PUNICODE_STRING pwszKLID, IN PCWSTR pszKbdFile OPTIONAL)
     if (pszKbdFile)
     {
         /* Append filename */
-        RtlStringCbCatW(wszLayoutPath, sizeof(wszLayoutPath), pszKbdFile);
+        Status = RtlStringCbCatW(wszLayoutPath, sizeof(wszLayoutPath), pszKbdFile);
+        if (!NT_SUCCESS(Status))
+        {
+            ERR("Failed to append '%S'\n", pszKbdFile);
+            return NULL;
+        }
     }
     else
     {
